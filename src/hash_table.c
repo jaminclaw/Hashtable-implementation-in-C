@@ -11,9 +11,22 @@ static int INITIAL_BASE_SIZE = 53;
 
 static HashTableItem* create_new_item(const char* key, const char* value) {
     HashTableItem* item = malloc(sizeof(HashTableItem));
+    if (item == NULL) {
+        return NULL;
+    }
 
     item->key = strdup(key);
+    if (item->key == NULL) {
+        free(item);
+        return NULL;
+    }
+
     item->value = strdup(value);
+    if (item->value == NULL) {
+        free(item->key);
+        free(item);
+        return NULL;
+    }
     return item;
 }
 
@@ -73,19 +86,21 @@ static int get_hash(const char* key, const int num_buckets, const int attempt) {
     return (hash_a + (attempt * (hash_b + 1))) % num_buckets;
 }
 
-static void hash_table_resize(HashTable* ht; const int base_size) {
+static int hash_table_resize(HashTable* ht; const int base_size) {
     if (base_size < INITIAL_BASE_SIZE) {
-        return;
+        return 1;
     }
     HashTable* new_ht = create_sized_hash_table(base_size);
     if (new_ht == NULL) {
-        return;
+        return 1;
     }
 
     for (int i = 0; i < ht->size; i++) {
         HashTable* item = ht->entries[i];
         if (item != NULL && item != &HT_DELETED_ITEM) {
-            insert(new_ht, item->key, item->value);
+            if (insert(new_ht, item->key, item->value) != 0) {
+                return 1;
+            }
         }
     }
 
@@ -101,25 +116,39 @@ static void hash_table_resize(HashTable* ht; const int base_size) {
     new_ht->entries = tmp_entries;
 
     free_hash_table(new_ht);
+    return 0;
 }
 
-static void hash_resize_up(HashTable* ht) {
+static int hash_resize_up(HashTable* ht) {
     const int new_size = ht->base_size * 2;
-    hash_table_resize(ht, new_size);
+    if (hash_table_resize(ht, new_size) != 0) {
+        return 1;
+    }
+    return 0;
 }
 
-static void hash_resize_down(HashTable* ht) {
+static int hash_resize_down(HashTable* ht) {
     const int new_size = ht->base_size / 2;
-    hash_table_resize(ht, new_size);
+    if (hash_table_resize(ht, new_size) != 0) {
+        return 1;
+    }
+    return 0;
 }
 
-void insert(HashTable* ht, const char* key, const char* value) {
+int insert(HashTable* ht, const char* key, const char* value) {
     const int load = ht->count * 100 / ht->size;
     if (load > 70) {
-        hash_resize_up(ht);
+        if (hash_resize_up(ht) != 0) {
+            return 1;
+        }
     }
 
     HashTableItem* item = create_new_item(key, value);
+    if (item == NULL) {
+        return 1;
+    }
+
+
     int index = get_hash(item->key, ht->size, 0);
     HashTableItem* current_item = ht->entries[index];
     int i = 1;
@@ -127,7 +156,7 @@ void insert(HashTable* ht, const char* key, const char* value) {
         if (strcmp(current_item->key, key) == 0) {
             free_item(current_item);
             ht->entries[index] = item;
-            return;
+            return 0;
         }
         index = get_hash(item->key, ht->size, i);
         current_item = ht->entries[index];
@@ -135,6 +164,7 @@ void insert(HashTable* ht, const char* key, const char* value) {
     }
     ht->entries[index] = item;
     ht->count++;
+    return 0;
 }
 
 char* search(HashTable* ht, const char* key) {
@@ -154,10 +184,12 @@ char* search(HashTable* ht, const char* key) {
     return NULL;
 }
 
-void delete(HashTable* ht, const char* key) {
+int delete(HashTable* ht, const char* key) {
     const int load = ht->count * 100 / ht->size;
     if (load < 10) {
-        hash_resize_down(ht);
+        if (hash_resize_down(ht) != 0) {
+            return 1;
+        }
     }
 
     int index = get_hash(key, ht->size, 0);
@@ -175,5 +207,5 @@ void delete(HashTable* ht, const char* key) {
         current_item = ht->entries[index];
         i++;
     }
-    
+    return 0;
 }
